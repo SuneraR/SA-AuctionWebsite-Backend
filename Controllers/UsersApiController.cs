@@ -32,6 +32,9 @@ namespace SA_Project_API.Controllers
             if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest("Email and password are required.");
 
+            if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+                return BadRequest("FirstName and LastName are required.");
+
             // Check if user exists
             var exists = await _db.Users.AnyAsync(u => u.Email == request.Email);
             if (exists)
@@ -46,13 +49,16 @@ namespace SA_Project_API.Controllers
                 LastName = request.LastName,
                 Email = request.Email,
                 PasswordHash = Convert.ToBase64String(hash),
-                PasswordSalt = Convert.ToBase64String(salt)
+                PasswordSalt = Convert.ToBase64String(salt),
+                Role = request.Role ?? "Buyer",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
 
-            return Ok(new { user.Id, user.Email, user.FirstName, user.LastName });
+            return Ok(new { user.Id, user.Email, user.FirstName, user.LastName, user.Role });
         }
 
         // POST: api/UsersApi/login
@@ -74,7 +80,7 @@ namespace SA_Project_API.Controllers
             // Create JWT
             var token = GenerateJwtToken(user);
 
-            return Ok(new { token, user = new { user.Id, user.Email, user.FirstName, user.LastName } });
+            return Ok(new { token, user = new { user.Id, user.Email, user.FirstName, user.LastName, user.Role } });
         }
 
         private string GenerateJwtToken(User user)
@@ -88,7 +94,8 @@ namespace SA_Project_API.Controllers
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
-                new Claim(ClaimTypes.Name, (user.FirstName + " " + user.LastName).Trim())
+                new Claim(ClaimTypes.Name, (user.FirstName + " " + user.LastName).Trim()),
+                new Claim(ClaimTypes.Role, user.Role)
             };
 
             var keyBytes = Encoding.UTF8.GetBytes(key ?? string.Empty);
@@ -119,7 +126,7 @@ namespace SA_Project_API.Controllers
             return computed.SequenceEqual(storedHash);
         }
 
-        public record RegisterRequest(string? FirstName, string? LastName, string Email, string Password);
+        public record RegisterRequest(string FirstName, string LastName, string Email, string Password, string? Role);
         public record LoginRequest(string Email, string Password);
     }
 }

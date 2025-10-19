@@ -17,11 +17,8 @@ namespace SA_Project_API.Models
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
 
-<<<<<<< HEAD
-=======
         public bool IsApproved { get; set; } = false;
 
->>>>>>> products
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

@@ -42,11 +42,10 @@ namespace SA_Project_API.Data
                       .WithMany()
                       .HasForeignKey(p => p.SellerId)
                       .OnDelete(DeleteBehavior.Cascade);
-<<<<<<< HEAD
-=======
+
 
                 entity.HasCheckConstraint("CK_Product_Times", "StartTime < EndTime");
->>>>>>> products
+
             });
         }
     }

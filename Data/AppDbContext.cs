@@ -11,6 +11,7 @@ namespace SA_Project_API.Data
 
         public DbSet<User> Users { get; set; }
         public DbSet<Product> Products { get; set; }
+        public DbSet<Bid> Bids { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -46,6 +47,22 @@ namespace SA_Project_API.Data
 
                 entity.HasCheckConstraint("CK_Product_Times", "StartTime < EndTime");
 
+            });
+
+            modelBuilder.Entity<Bid>(entity =>
+            {
+                entity.Property(b => b.BidAmount).IsRequired().HasColumnType("decimal(10,2)");
+                entity.Property(b => b.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(b => b.Product)
+                      .WithMany()
+                      .HasForeignKey(b => b.ProductId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(b => b.Buyer)
+                      .WithMany()
+                      .HasForeignKey(b => b.BuyerId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Visual Studio
 .vs/
 *.user
@@ -37,3 +38,68 @@ dist/
 # Others
 Thumbs.db
 .DS_Store
+=======
+# Build Folders
+bin/
+obj/
+Debug/
+Release/
+# Build artifacts
+bin/
+obj/
+
+
+# Visual Studio / Rider / VS Code
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.ide
+.idea/
+.vscode/
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# ASP.NET / Web
+wwwroot/
+*.log
+*.cache
+*.vspscc
+
+# Rider caches
+*.iml
+out/
+
+# Resharper
+_ReSharper*/
+*.DotSettings.user
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# JetBrains Rider
+.idea/
+
+# Rider local history
+.localhistory/
+
+# Others
+*.db
+*.bak
+*.swp
+*.lock
+*.tmp
+*.cache
+*.pid
+*.seed
+
+# Dotnet global tools
+.toolstarget
+>>>>>>> products

@@ -1,0 +1,39 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Build folders
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+[Tt]emp/
+
+# Rider IDE
+.idea/
+*.iml
+
+# Packages
+*.nupkg
+*.snupkg
+*.nuspec
+packages/
+*.bak
+
+# Environment files
+.env
+.env.*
+
+# ASP.NET specific
+appsettings.Development.json
+*.db
+*.sqlite
+
+# Node (if frontend included)
+node_modules/
+dist/
+
+# Others
+Thumbs.db
+.DS_Store

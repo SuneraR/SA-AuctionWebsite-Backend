@@ -1,12 +1,15 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SA_Project_API.Data;
 using SA_Project_API.Models;
+using System.Security.Claims;
 
 namespace SA_Project_API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class OrdersApiController : ControllerBase
     {
         private readonly AppDbContext _db;
@@ -26,6 +29,10 @@ namespace SA_Project_API.Controllers
             if (request == null)
                 return BadRequest("Invalid request");
 
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
             // Verify product exists
             var product = await _db.Products.FindAsync(request.ProductId);
             if (product == null)
@@ -35,8 +42,13 @@ namespace SA_Project_API.Controllers
             if (DateTime.UtcNow < product.EndTime)
                 return BadRequest("Auction has not ended yet. Cannot create order.");
 
+            // Use authenticated user as buyer unless Admin
+            var buyerId = request.BuyerId ?? userId;
+            if (buyerId != userId && !User.IsInRole("Admin"))
+                return Forbid("You can only create orders for yourself.");
+
             // Verify buyer exists
-            var buyerExists = await _db.Users.AnyAsync(u => u.Id == request.BuyerId);
+            var buyerExists = await _db.Users.AnyAsync(u => u.Id == buyerId);
             if (!buyerExists)
                 return BadRequest("Buyer does not exist.");
 
@@ -55,13 +67,13 @@ namespace SA_Project_API.Controllers
             if (highestBid == null)
                 return BadRequest("No bids found for this product.");
 
-            if (highestBid.BuyerId != request.BuyerId)
+            if (highestBid.BuyerId != buyerId && !User.IsInRole("Admin"))
                 return BadRequest("Only the highest bidder can create an order for this product.");
 
             var order = new Order
             {
                 ProductId = request.ProductId,
-                BuyerId = request.BuyerId,
+                BuyerId = buyerId,
                 FinalPrice = highestBid.BidAmount,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
@@ -79,17 +91,65 @@ namespace SA_Project_API.Controllers
         {
             var order = await _db.Orders
                 .Include(o => o.Product)
+                    .ThenInclude(p => p!.Seller)
                 .Include(o => o.Buyer)
                 .SingleOrDefaultAsync(o => o.Id == id);
 
             if (order == null)
                 return NotFound();
 
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            // Only buyer, seller, or admin can view order
+            if (order.BuyerId != userId && order.Product?.SellerId != userId && !User.IsInRole("Admin"))
+                return Forbid("You do not have permission to view this order.");
+
             return Ok(order);
+        }
+
+        // GET: api/Orders/my-purchases
+        [HttpGet("my-purchases")]
+        public async Task<IActionResult> GetMyPurchases([FromQuery] int limit = 50)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            var orders = await _db.Orders
+                .Where(o => o.BuyerId == userId)
+                .Include(o => o.Product)
+                .OrderByDescending(o => o.CreatedAt)
+                .Take(limit)
+                .ToListAsync();
+
+            return Ok(orders);
+        }
+
+        // GET: api/Orders/my-sales
+        [HttpGet("my-sales")]
+        [Authorize(Roles = "Seller,Admin")]
+        public async Task<IActionResult> GetMySales([FromQuery] int limit = 50)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            var orders = await _db.Orders
+                .Include(o => o.Product)
+                .Include(o => o.Buyer)
+                .Where(o => o.Product!.SellerId == userId)
+                .OrderByDescending(o => o.CreatedAt)
+                .Take(limit)
+                .ToListAsync();
+
+            return Ok(orders);
         }
 
         // GET: api/Orders/buyer/{buyerId}
         [HttpGet("buyer/{buyerId:int}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetOrdersByBuyer(int buyerId, [FromQuery] int limit = 50)
         {
             var orders = await _db.Orders
@@ -104,6 +164,7 @@ namespace SA_Project_API.Controllers
 
         // GET: api/Orders/seller/{sellerId}
         [HttpGet("seller/{sellerId:int}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetOrdersBySeller(int sellerId, [FromQuery] int limit = 50)
         {
             var orders = await _db.Orders
@@ -128,9 +189,20 @@ namespace SA_Project_API.Controllers
             if (!validStatuses.Contains(request.Status))
                 return BadRequest($"Invalid status. Valid values: {string.Join(", ", validStatuses)}");
 
-            var order = await _db.Orders.FindAsync(id);
+            var order = await _db.Orders
+                .Include(o => o.Product)
+                .SingleOrDefaultAsync(o => o.Id == id);
+
             if (order == null)
                 return NotFound();
+
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            // Only buyer, seller, or admin can update status
+            if (order.BuyerId != userId && order.Product?.SellerId != userId && !User.IsInRole("Admin"))
+                return Forbid("You do not have permission to update this order.");
 
             // Prevent updating to same status
             if (order.Status == request.Status)
@@ -140,11 +212,20 @@ namespace SA_Project_API.Controllers
             if (order.Status == "Cancelled")
                 return BadRequest("Cannot update a cancelled order.");
 
-            // Business logic: Paid orders can only be cancelled
+            // Business logic: Paid orders can only be cancelled (by seller or admin)
             if (order.Status == "Paid" && request.Status != "Cancelled")
                 return BadRequest("Paid orders can only be cancelled.");
 
             order.Status = request.Status;
+
+            // If order is paid, mark product as Sold
+            if (request.Status == "Paid" && order.Product != null)
+            {
+                order.Product.Status = "Sold";
+                order.Product.UpdatedAt = DateTime.UtcNow;
+                _db.Products.Update(order.Product);
+            }
+
             _db.Orders.Update(order);
             await _db.SaveChangesAsync();
 
@@ -154,6 +235,7 @@ namespace SA_Project_API.Controllers
         // DELETE: api/Orders/{id}
         // Only allow deletion if status is Pending
         [HttpDelete("{id:int}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteOrder(int id)
         {
             var order = await _db.Orders.FindAsync(id);
@@ -172,6 +254,7 @@ namespace SA_Project_API.Controllers
         // POST: api/Orders/create-for-winner/{productId}
         // Automatically create order for the highest bidder after auction ends
         [HttpPost("create-for-winner/{productId:int}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateOrderForWinner(int productId)
         {
             var product = await _db.Products.FindAsync(productId);
@@ -212,7 +295,7 @@ namespace SA_Project_API.Controllers
         }
 
         // DTOs
-        public record CreateOrderRequest(int ProductId, int BuyerId);
+        public record CreateOrderRequest(int ProductId, int? BuyerId);
         public record UpdateOrderStatusRequest(string Status);
     }
 }

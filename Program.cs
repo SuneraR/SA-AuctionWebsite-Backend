@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using SA_Project_API.Data;
+using SA_Project_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +50,16 @@ if (!string.IsNullOrEmpty(jwtKey))
         };
     });
 }
+
+// Add Authorization
+builder.Services.AddAuthorization();
+
+// Register application services
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IPaymentService, DummyPaymentService>();
+
+// Register background services
+builder.Services.AddHostedService<AuctionBackgroundService>();
 
 var app = builder.Build();
 

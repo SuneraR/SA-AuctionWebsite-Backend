@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SA_Project_API.Data;
 using SA_Project_API.Models;
+using SA_Project_API.Services;
 
 namespace SA_Project_API.Controllers
 {
@@ -11,11 +12,13 @@ namespace SA_Project_API.Controllers
     {
         private readonly AppDbContext _db;
         private readonly ILogger<BidsApiController> _logger;
+        private readonly INotificationService _notificationService;
 
-        public BidsApiController(AppDbContext db, ILogger<BidsApiController> logger)
+        public BidsApiController(AppDbContext db, ILogger<BidsApiController> logger, INotificationService notificationService)
         {
             _db = db;
             _logger = logger;
+            _notificationService = notificationService;
         }
 
         // POST: api/Bids
@@ -35,7 +38,18 @@ namespace SA_Project_API.Controllers
             if (product == null)
                 return NotFound("Product not found.");
 
-            // Check if auction is still active
+            // Prevent self-bidding
+            if (product.SellerId == request.BuyerId)
+                return BadRequest("Sellers cannot bid on their own products.");
+
+            // Check if auction is active and approved
+            if (!product.IsApproved)
+                return BadRequest("This product is not approved for bidding.");
+
+            if (product.Status != "Active")
+                return BadRequest($"Auction is not active. Current status: {product.Status}");
+
+            // Check if auction is still active (time-based)
             var now = DateTime.UtcNow;
             if (now < product.StartTime)
                 return BadRequest("Auction has not started yet.");
@@ -43,9 +57,16 @@ namespace SA_Project_API.Controllers
             if (now > product.EndTime)
                 return BadRequest("Auction has ended.");
 
-            // Verify bid amount is higher than current price
-            if (request.BidAmount <= product.CurrentPrice)
-                return BadRequest($"Bid amount must be higher than current price ({product.CurrentPrice}).");
+            // Verify bid amount is higher than current price + minimum increment
+            var minimumBid = product.CurrentPrice + product.MinBidIncrement;
+            if (request.BidAmount < minimumBid)
+                return BadRequest($"Bid amount must be at least ${minimumBid:F2} (current price + minimum increment of ${product.MinBidIncrement:F2}).");
+
+            // Get the previous highest bidder to notify them
+            var previousHighestBid = await _db.Bids
+                .Where(b => b.ProductId == request.ProductId)
+                .OrderByDescending(b => b.BidAmount)
+                .FirstOrDefaultAsync();
 
             // Create bid
             var bid = new Bid
@@ -64,6 +85,15 @@ namespace SA_Project_API.Controllers
             _db.Products.Update(product);
 
             await _db.SaveChangesAsync();
+
+            // Send notifications
+            await _notificationService.NotifyBidPlacedAsync(request.BuyerId, request.ProductId, request.BidAmount);
+
+            // Notify previous highest bidder they've been outbid
+            if (previousHighestBid != null && previousHighestBid.BuyerId != request.BuyerId)
+            {
+                await _notificationService.NotifyBidOutbidAsync(previousHighestBid.BuyerId, request.ProductId);
+            }
 
             return CreatedAtAction(nameof(GetById), new { id = bid.Id }, bid);
         }

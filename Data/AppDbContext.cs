@@ -13,6 +13,8 @@ namespace SA_Project_API.Data
         public DbSet<Product> Products { get; set; }
         public DbSet<Bid> Bids { get; set; }
         public DbSet<Order> Orders { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
+        public DbSet<Payment> Payments { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -36,6 +38,8 @@ namespace SA_Project_API.Data
                 entity.Property(p => p.Name).IsRequired().HasMaxLength(255);
                 entity.Property(p => p.StartPrice).HasColumnType("decimal(10,2)");
                 entity.Property(p => p.CurrentPrice).HasColumnType("decimal(10,2)");
+                entity.Property(p => p.MinBidIncrement).HasColumnType("decimal(10,2)").HasDefaultValue(1.00m);
+                entity.Property(p => p.Status).IsRequired().HasMaxLength(20).HasDefaultValue("Draft");
 
                 entity.Property(p => p.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
                 entity.Property(p => p.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
@@ -44,6 +48,11 @@ namespace SA_Project_API.Data
                       .WithMany()
                       .HasForeignKey(p => p.SellerId)
                       .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(p => p.Winner)
+                      .WithMany()
+                      .HasForeignKey(p => p.WinnerId)
+                      .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasCheckConstraint("CK_Product_Times", "StartTime < EndTime");
             });
@@ -78,6 +87,33 @@ namespace SA_Project_API.Data
                 entity.HasOne(o => o.Buyer)
                       .WithMany()
                       .HasForeignKey(o => o.BuyerId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.Property(n => n.Type).IsRequired().HasMaxLength(50);
+                entity.Property(n => n.Message).IsRequired();
+                entity.Property(n => n.IsRead).HasDefaultValue(false);
+                entity.Property(n => n.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(n => n.User)
+                      .WithMany()
+                      .HasForeignKey(n => n.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Payment>(entity =>
+            {
+                entity.Property(p => p.Amount).IsRequired().HasColumnType("decimal(10,2)");
+                entity.Property(p => p.PaymentMethod).IsRequired().HasMaxLength(50);
+                entity.Property(p => p.Status).IsRequired().HasMaxLength(20).HasDefaultValue("Pending");
+                entity.Property(p => p.TransactionId).HasMaxLength(255);
+                entity.Property(p => p.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(p => p.Order)
+                      .WithMany()
+                      .HasForeignKey(p => p.OrderId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

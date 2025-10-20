@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SA_Project_API.Data;
 using SA_Project_API.Models;
+using System.Security.Claims;
 
 namespace SA_Project_API.Controllers
 {
@@ -20,6 +22,7 @@ namespace SA_Project_API.Controllers
 
         // POST: api/Products
         [HttpPost]
+        [Authorize(Roles = "Seller,Admin")]
         public async Task<IActionResult> Create(CreateProductRequest request)
         {
             if (request == null)
@@ -28,20 +31,34 @@ namespace SA_Project_API.Controllers
             if (request.StartTime >= request.EndTime)
                 return BadRequest("StartTime must be earlier than EndTime.");
 
-            var sellerExists = await _db.Users.AnyAsync(u => u.Id == request.SellerId);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            // Use authenticated user as seller
+            var sellerId = request.SellerId ?? userId;
+
+            // Verify seller exists
+            var sellerExists = await _db.Users.AnyAsync(u => u.Id == sellerId);
             if (!sellerExists)
                 return BadRequest("Seller does not exist.");
 
+            // Only allow creating product for self unless Admin
+            if (sellerId != userId && !User.IsInRole("Admin"))
+                return Forbid("You can only create products for yourself.");
+
             var product = new Product
             {
-                SellerId = request.SellerId,
+                SellerId = sellerId,
                 Name = request.Name,
                 Description = request.Description,
                 StartPrice = request.StartPrice,
                 CurrentPrice = request.StartPrice,
+                MinBidIncrement = request.MinBidIncrement ?? 1.00m,
                 StartTime = request.StartTime,
                 EndTime = request.EndTime,
-                IsApproved = false,
+                IsApproved = User.IsInRole("Admin"), // Auto-approve for admins
+                Status = "Pending", // Pending approval
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -56,7 +73,11 @@ namespace SA_Project_API.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var product = await _db.Products.Include(p => p.Seller).SingleOrDefaultAsync(p => p.Id == id);
+            var product = await _db.Products
+                .Include(p => p.Seller)
+                .Include(p => p.Winner)
+                .SingleOrDefaultAsync(p => p.Id == id);
+
             if (product == null)
                 return NotFound();
 
@@ -65,14 +86,25 @@ namespace SA_Project_API.Controllers
 
         // GET: api/Products/search?name=abc
         [HttpGet("search")]
-        public async Task<IActionResult> Search([FromQuery] string name, [FromQuery] int limit = 50)
+        public async Task<IActionResult> Search([FromQuery] string? name, [FromQuery] string? status, [FromQuery] int limit = 50)
         {
-            if (string.IsNullOrWhiteSpace(name))
-                return BadRequest("Query 'name' is required.");
+            var query = _db.Products.AsQueryable();
 
-            var q = name.Trim();
-            var results = await _db.Products
-                .Where(p => EF.Functions.Like(p.Name, $"%{q}%"))
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var q = name.Trim();
+                query = query.Where(p => EF.Functions.Like(p.Name, $"%{q}%"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                query = query.Where(p => p.Status == status);
+            }
+
+            // Only show approved products for public search
+            query = query.Where(p => p.IsApproved);
+
+            var results = await query
                 .OrderBy(p => p.StartTime)
                 .Take(limit)
                 .ToListAsync();
@@ -80,8 +112,23 @@ namespace SA_Project_API.Controllers
             return Ok(results);
         }
 
+        // GET: api/Products/active
+        [HttpGet("active")]
+        public async Task<IActionResult> GetActive([FromQuery] int limit = 50)
+        {
+            var now = DateTime.UtcNow;
+            var activeProducts = await _db.Products
+                .Where(p => p.IsApproved && p.Status == "Active" && p.StartTime <= now && p.EndTime > now)
+                .OrderBy(p => p.EndTime)
+                .Take(limit)
+                .ToListAsync();
+
+            return Ok(activeProducts);
+        }
+
         // PUT: api/Products/{id}
         [HttpPut("{id:int}")]
+        [Authorize(Roles = "Seller,Admin")]
         public async Task<IActionResult> Update(int id, UpdateProductRequest request)
         {
             if (request == null)
@@ -91,6 +138,22 @@ namespace SA_Project_API.Controllers
             if (product == null)
                 return NotFound();
 
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            // Only seller or admin can update
+            if (product.SellerId != userId && !User.IsInRole("Admin"))
+                return Forbid("You can only update your own products.");
+
+            // Prevent updating products with bids (unless admin)
+            if (!User.IsInRole("Admin"))
+            {
+                var hasBids = await _db.Bids.AnyAsync(b => b.ProductId == id);
+                if (hasBids)
+                    return BadRequest("Cannot update product that has bids.");
+            }
+
             var newStart = request.StartTime ?? product.StartTime;
             var newEnd = request.EndTime ?? product.EndTime;
             if (newStart >= newEnd)
@@ -99,7 +162,7 @@ namespace SA_Project_API.Controllers
             product.Name = request.Name ?? product.Name;
             product.Description = request.Description ?? product.Description;
             product.StartPrice = request.StartPrice ?? product.StartPrice;
-            product.CurrentPrice = request.CurrentPrice ?? product.CurrentPrice;
+            product.MinBidIncrement = request.MinBidIncrement ?? product.MinBidIncrement;
             product.StartTime = newStart;
             product.EndTime = newEnd;
             product.UpdatedAt = DateTime.UtcNow;
@@ -110,13 +173,52 @@ namespace SA_Project_API.Controllers
             return Ok(product);
         }
 
+        // PUT: api/Products/{id}/approve
+        [HttpPut("{id:int}/approve")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ApproveProduct(int id)
+        {
+            var product = await _db.Products.FindAsync(id);
+            if (product == null)
+                return NotFound();
+
+            if (product.IsApproved)
+                return BadRequest("Product is already approved.");
+
+            product.IsApproved = true;
+            product.Status = "Active";
+            product.UpdatedAt = DateTime.UtcNow;
+
+            _db.Products.Update(product);
+            await _db.SaveChangesAsync();
+
+            return Ok(product);
+        }
+
         // DELETE: api/Products/{id}
         [HttpDelete("{id:int}")]
+        [Authorize(Roles = "Seller,Admin")]
         public async Task<IActionResult> Delete(int id)
         {
             var product = await _db.Products.FindAsync(id);
             if (product == null)
                 return NotFound();
+
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            // Only seller or admin can delete
+            if (product.SellerId != userId && !User.IsInRole("Admin"))
+                return Forbid("You can only delete your own products.");
+
+            // Prevent deleting products with bids (unless admin)
+            if (!User.IsInRole("Admin"))
+            {
+                var hasBids = await _db.Bids.AnyAsync(b => b.ProductId == id);
+                if (hasBids)
+                    return BadRequest("Cannot delete product that has bids. Cancel the auction instead.");
+            }
 
             _db.Products.Remove(product);
             await _db.SaveChangesAsync();
@@ -125,7 +227,7 @@ namespace SA_Project_API.Controllers
         }
 
         // DTOs
-        public record CreateProductRequest(int SellerId, string Name, string? Description, decimal StartPrice, DateTime StartTime, DateTime EndTime);
-        public record UpdateProductRequest(string? Name, string? Description, decimal? StartPrice, decimal? CurrentPrice, DateTime? StartTime, DateTime? EndTime);
+        public record CreateProductRequest(int? SellerId, string Name, string? Description, decimal StartPrice, DateTime StartTime, DateTime EndTime, decimal? MinBidIncrement);
+        public record UpdateProductRequest(string? Name, string? Description, decimal? StartPrice, decimal? MinBidIncrement, DateTime? StartTime, DateTime? EndTime);
     }
 }

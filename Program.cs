@@ -15,6 +15,20 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Enable CORS for React frontend
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactApp",
+        policy =>
+        {
+            policy
+                .WithOrigins("http://localhost:3000")
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        });
+});
+
 // Configure DbContext for MySQL using Pomelo
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (!string.IsNullOrEmpty(connectionString))
@@ -71,6 +85,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowReactApp");
 
 app.UseAuthentication();
 app.UseAuthorization();

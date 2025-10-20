@@ -12,6 +12,7 @@ namespace SA_Project_API.Data
         public DbSet<User> Users { get; set; }
         public DbSet<Product> Products { get; set; }
         public DbSet<Bid> Bids { get; set; }
+        public DbSet<Order> Orders { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -44,9 +45,7 @@ namespace SA_Project_API.Data
                       .HasForeignKey(p => p.SellerId)
                       .OnDelete(DeleteBehavior.Cascade);
 
-
                 entity.HasCheckConstraint("CK_Product_Times", "StartTime < EndTime");
-
             });
 
             modelBuilder.Entity<Bid>(entity =>
@@ -62,6 +61,23 @@ namespace SA_Project_API.Data
                 entity.HasOne(b => b.Buyer)
                       .WithMany()
                       .HasForeignKey(b => b.BuyerId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Order>(entity =>
+            {
+                entity.Property(o => o.FinalPrice).IsRequired().HasColumnType("decimal(10,2)");
+                entity.Property(o => o.Status).IsRequired().HasMaxLength(20).HasDefaultValue("Pending");
+                entity.Property(o => o.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(o => o.Product)
+                      .WithMany()
+                      .HasForeignKey(o => o.ProductId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(o => o.Buyer)
+                      .WithMany()
+                      .HasForeignKey(o => o.BuyerId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

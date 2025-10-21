@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SA_Project_API.Data;
 using SA_Project_API.Models;
+using SA_Project_API.Services;
 using System.Security.Cryptography;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
@@ -17,12 +18,14 @@ namespace SA_Project_API.Controllers
         private readonly AppDbContext _db;
         private readonly ILogger<UsersApiController> _logger;
         private readonly IConfiguration _config;
+        private readonly IEmailService _emailService;
 
-        public UsersApiController(AppDbContext db, ILogger<UsersApiController> logger, IConfiguration config)
+        public UsersApiController(AppDbContext db, ILogger<UsersApiController> logger, IConfiguration config, IEmailService emailService)
         {
             _db = db;
             _logger = logger;
             _config = config;
+            _emailService = emailService;
         }
 
         // POST: api/UsersApi/register
@@ -57,6 +60,9 @@ namespace SA_Project_API.Controllers
 
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
+
+            // Send welcome email
+            await _emailService.SendWelcomeEmailAsync(user.Email, user.FirstName);
 
             return Ok(new { user.Id, user.Email, user.FirstName, user.LastName, user.Role });
         }

@@ -1,53 +1,8 @@
-<<<<<<< HEAD
-# Visual Studio
-.vs/
-*.user
-*.suo
-
-# Build folders
-bin/
-obj/
-[Bb]uild/
-[Ll]og/
-[Tt]emp/
-
-# Rider IDE
-.idea/
-*.iml
-
-# Packages
-*.nupkg
-*.snupkg
-*.nuspec
-packages/
-*.bak
-
-# Environment files
-.env
-.env.*
-
-# ASP.NET specific
-appsettings.Development.json
-*.db
-*.sqlite
-
-# Node (if frontend included)
-node_modules/
-dist/
-
-# Others
-Thumbs.db
-.DS_Store
-=======
 # Build Folders
 bin/
 obj/
 Debug/
 Release/
-# Build artifacts
-bin/
-obj/
-
 
 # Visual Studio / Rider / VS Code
 .vs/
@@ -65,8 +20,11 @@ obj/
 packages/
 .nuget/
 
-# ASP.NET / Web
-wwwroot/
+# ASP.NET / Web - IMPORTANT: Exclude sensitive config files
+appsettings.json
+appsettings.*.json
+!appsettings.Example.json
+wwwroot/uploads/
 *.log
 *.cache
 *.vspscc
@@ -74,6 +32,8 @@ wwwroot/
 # Rider caches
 *.iml
 out/
+.idea/
+.localhistory/
 
 # Resharper
 _ReSharper*/
@@ -84,22 +44,25 @@ _ReSharper*/
 Thumbs.db
 desktop.ini
 
-# JetBrains Rider
-.idea/
-
-# Rider local history
-.localhistory/
-
-# Others
+# Database files
 *.db
+*.sqlite
+
+# Environment files
+.env
+.env.*
+
+# Temporary files
 *.bak
 *.swp
 *.lock
 *.tmp
-*.cache
 *.pid
 *.seed
 
+# Node (if frontend included)
+node_modules/
+dist/
+
 # Dotnet global tools
 .toolstarget
->>>>>>> products

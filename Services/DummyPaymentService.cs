@@ -16,12 +16,14 @@ namespace SA_Project_API.Services
         private readonly AppDbContext _db;
         private readonly ILogger<DummyPaymentService> _logger;
         private readonly INotificationService _notificationService;
+        private readonly IEmailService _emailService;
 
-        public DummyPaymentService(AppDbContext db, ILogger<DummyPaymentService> logger, INotificationService notificationService)
+        public DummyPaymentService(AppDbContext db, ILogger<DummyPaymentService> logger, INotificationService notificationService, IEmailService emailService)
         {
             _db = db;
             _logger = logger;
             _notificationService = notificationService;
+            _emailService = emailService;
         }
 
         public async Task<PaymentResult> ProcessPaymentAsync(int orderId, PaymentRequest paymentRequest)
@@ -109,12 +111,24 @@ namespace SA_Project_API.Services
 
                 await _db.SaveChangesAsync();
 
-                // Send notification
+                // Send in-app notification
                 await _notificationService.SendNotificationAsync(
                     order.BuyerId,
                     "OrderPaid",
                     $"Payment of ${order.FinalPrice:F2} completed successfully for order #{orderId}. Transaction ID: {transactionId}"
                 );
+
+                // Send email confirmation
+                if (order.Buyer != null)
+                {
+                    await _emailService.SendPaymentConfirmationEmailAsync(
+                        order.Buyer.Email,
+                        order.Buyer.FirstName,
+                        orderId,
+                        order.FinalPrice,
+                        transactionId
+                    );
+                }
 
                 _logger.LogInformation($"Payment successful for order {orderId}. Transaction ID: {transactionId}");
 
@@ -133,6 +147,7 @@ namespace SA_Project_API.Services
             {
                 var payment = await _db.Payments
                     .Include(p => p.Order)
+                        .ThenInclude(o => o!.Buyer)
                     .FirstOrDefaultAsync(p => p.Id == paymentId);
 
                 if (payment == null)

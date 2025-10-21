@@ -15,6 +15,7 @@ namespace SA_Project_API.Data
         public DbSet<Order> Orders { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<Payment> Payments { get; set; }
+        public DbSet<ProductImage> ProductImages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -53,6 +54,11 @@ namespace SA_Project_API.Data
                       .WithMany()
                       .HasForeignKey(p => p.WinnerId)
                       .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasMany(p => p.Images)
+                      .WithOne(i => i.Product)
+                      .HasForeignKey(i => i.ProductId)
+                      .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasCheckConstraint("CK_Product_Times", "StartTime < EndTime");
             });
@@ -114,6 +120,19 @@ namespace SA_Project_API.Data
                 entity.HasOne(p => p.Order)
                       .WithMany()
                       .HasForeignKey(p => p.OrderId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<ProductImage>(entity =>
+            {
+                entity.Property(i => i.ImageUrl).IsRequired().HasMaxLength(500);
+                entity.Property(i => i.IsPrimary).HasDefaultValue(false);
+                entity.Property(i => i.DisplayOrder).HasDefaultValue(0);
+                entity.Property(i => i.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(i => i.Product)
+                      .WithMany(p => p.Images)
+                      .HasForeignKey(i => i.ProductId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

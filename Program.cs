@@ -55,6 +55,7 @@ if (!string.IsNullOrEmpty(jwtKey))
 builder.Services.AddAuthorization();
 
 // Register application services
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPaymentService, DummyPaymentService>();
 builder.Services.AddScoped<IImageUploadService, ImageUploadService>();

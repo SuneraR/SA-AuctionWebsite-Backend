@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace SA_Project_API.Models
 {
@@ -26,5 +27,8 @@ namespace SA_Project_API.Models
 
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+
+        // Navigation property for images
+        public ICollection<ProductImage> Images { get; set; } = new List<ProductImage>();
     }
 }

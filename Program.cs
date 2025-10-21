@@ -57,6 +57,7 @@ builder.Services.AddAuthorization();
 // Register application services
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPaymentService, DummyPaymentService>();
+builder.Services.AddScoped<IImageUploadService, ImageUploadService>();
 
 // Register background services
 builder.Services.AddHostedService<AuctionBackgroundService>();
@@ -69,6 +70,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Enable static files to serve uploaded images
+app.UseStaticFiles();
 
 app.UseHttpsRedirection();
 

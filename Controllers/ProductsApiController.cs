@@ -301,6 +301,36 @@ namespace SA_Project_API.Controllers
             return Ok(activeProducts);
         }
 
+        // GET: api/Products/my-products
+        [HttpGet("my-products")]
+        [Authorize(Roles = "Seller,Admin")]
+        public async Task<IActionResult> GetMyProducts([FromQuery] string? status, [FromQuery] bool? isApproved)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            var query = _db.Products
+                .Include(p => p.Images.Where(i => i.IsPrimary))
+                .Where(p => p.SellerId == userId);
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                query = query.Where(p => p.Status == status);
+            }
+
+            if (isApproved.HasValue)
+            {
+                query = query.Where(p => p.IsApproved == isApproved.Value);
+            }
+
+            var products = await query
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+
+            return Ok(products);
+        }
+
         // PUT: api/Products/{id}
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Seller,Admin")]

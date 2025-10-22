@@ -8,6 +8,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SA_Project_API.Controllers
 {
@@ -89,6 +90,101 @@ namespace SA_Project_API.Controllers
             return Ok(new { token, user = new { user.Id, user.Email, user.FirstName, user.LastName, user.Role } });
         }
 
+        // GET: api/UsersApi/me
+        [HttpGet("me")]
+        [Authorize]
+        public async Task<IActionResult> GetCurrentUser()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            var user = await _db.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found");
+
+            return Ok(new
+            {
+                user.Id,
+                user.Email,
+                user.FirstName,
+                user.LastName,
+                user.Role,
+                user.CreatedAt
+            });
+        }
+
+        // PUT: api/UsersApi/me
+        [HttpPut("me")]
+        [Authorize]
+        public async Task<IActionResult> UpdateProfile(UpdateProfileRequest request)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            var user = await _db.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found");
+
+            if (!string.IsNullOrWhiteSpace(request.FirstName))
+                user.FirstName = request.FirstName;
+
+            if (!string.IsNullOrWhiteSpace(request.LastName))
+                user.LastName = request.LastName;
+
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _db.Users.Update(user);
+            await _db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                user.Id,
+                user.Email,
+                user.FirstName,
+                user.LastName,
+                user.Role
+            });
+        }
+
+        // PUT: api/UsersApi/change-password
+        [HttpPut("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.CurrentPassword) || string.IsNullOrWhiteSpace(request.NewPassword))
+                return BadRequest("Current password and new password are required.");
+
+            if (request.NewPassword.Length < 6)
+                return BadRequest("New password must be at least 6 characters long.");
+
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                return Unauthorized();
+
+            var user = await _db.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found");
+
+            var hash = Convert.FromBase64String(user.PasswordHash ?? "");
+            var salt = Convert.FromBase64String(user.PasswordSalt ?? "");
+
+            if (!VerifyPasswordHash(request.CurrentPassword, hash, salt))
+                return BadRequest("Current password is incorrect.");
+
+            // Create new password hash
+            CreatePasswordHash(request.NewPassword, out var newHash, out var newSalt);
+            user.PasswordHash = Convert.ToBase64String(newHash);
+            user.PasswordSalt = Convert.ToBase64String(newSalt);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _db.Users.Update(user);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "Password changed successfully" });
+        }
+
         private string GenerateJwtToken(User user)
         {
             var key = _config["Jwt:Key"];
@@ -134,5 +230,7 @@ namespace SA_Project_API.Controllers
 
         public record RegisterRequest(string FirstName, string LastName, string Email, string Password, string? Role);
         public record LoginRequest(string Email, string Password);
+        public record UpdateProfileRequest(string? FirstName, string? LastName);
+        public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     }
 }

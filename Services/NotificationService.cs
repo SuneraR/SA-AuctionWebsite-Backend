@@ -7,6 +7,7 @@ namespace SA_Project_API.Services
     public interface INotificationService
     {
         Task SendNotificationAsync(int userId, string type, string message);
+        Task CreateNotificationAsync(int userId, string title, string message, string type, int? productId);
         Task NotifyBidPlacedAsync(int bidderId, int productId, decimal bidAmount);
         Task NotifyBidOutbidAsync(int previousBidderId, int productId);
         Task NotifyAuctionWonAsync(int winnerId, int productId);
@@ -42,6 +43,40 @@ namespace SA_Project_API.Services
             await _db.SaveChangesAsync();
 
             _logger.LogInformation($"Notification sent to user {userId}: {type} - {message}");
+        }
+
+        public async Task CreateNotificationAsync(int userId, string title, string message, string type, int? productId)
+        {
+            // Create in-app notification with combined title and message
+            var fullMessage = !string.IsNullOrEmpty(title) ? $"{title}: {message}" : message;
+            
+            var notification = new Notification
+            {
+                UserId = userId,
+                Type = type,
+                Message = fullMessage,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Notifications.Add(notification);
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation($"Notification created for user {userId}: {type} - {fullMessage}");
+
+            // Send email notification for important events
+            var user = await _db.Users.FindAsync(userId);
+            if (user != null)
+            {
+                try
+                {
+                    await _emailService.SendEmailAsync(user.Email, user.FirstName, title, $"<p>{message}</p>");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Failed to send email notification to user {userId}");
+                }
+            }
         }
 
         public async Task NotifyBidPlacedAsync(int bidderId, int productId, decimal bidAmount)

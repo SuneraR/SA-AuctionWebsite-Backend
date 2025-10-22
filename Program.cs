@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using SA_Project_API.Data;
 using SA_Project_API.Services;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,7 +14,60 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// Configure Swagger with JWT Authentication
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Auction Platform API",
+        Version = "v1",
+        Description = "API for the Auction Platform with Admin features",
+        Contact = new OpenApiContact
+        {
+            Name = "SA Project API",
+            Email = "support@auctionplatform.com"
+        }
+    });
+
+    // Add JWT Authentication to Swagger
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter 'Bearer' [space] and then your valid JWT token.\n\nExample: \"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\""
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// Configure CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactApp", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000", "http://localhost:5173") // Common React dev ports
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 // Configure DbContext for MySQL using Pomelo
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -74,6 +128,9 @@ if (app.Environment.IsDevelopment())
 
 // Enable static files to serve uploaded images
 app.UseStaticFiles();
+
+// Enable CORS
+app.UseCors("AllowReactApp");
 
 app.UseHttpsRedirection();
 
